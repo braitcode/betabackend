@@ -3,6 +3,7 @@ import { hashPassword, comparePassword } from "../helpers/auth.js";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { cloudinary } from "../helpers/cloudinary.config.js";
+import { sendResetEmail } from "../helpers/email.js";
 
 dotenv.config();
 
@@ -113,39 +114,42 @@ export const login = async (req, res) => {
 };
 
 // create forgot password function
-export const forgotPassword = async (req, res)=>{
+export const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body
+      const { email } = req.body;
+      if(!email) {
+          return res.status(400).json({success:false, message: "Email is required"});
+      }
 
-    // find user by email
-    const user = await User.findOne({email});
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+      // find user by email
+      const user = await User.findOne({email});
+      if (!user){
+          return res.status(404).json({success:false, message: "User not found"});
+      }
 
-    // OTP and send to user
+      // OTP and send to user
 
+      // Generate password reset token
+      const resetToken = jwt.sign({userId: user._id}, process.env.JWT_SECRET, {
+          expiresIn: "1h"
+      });
 
-    // Generate password reset token
-    const resetToken = jwt.sign({userId: user._id}, process.env.JWT_SECRET, {expiresIn: "1h"});
+      // send reset token to user's email address
+      const domain = "https://betahouse-frontend-lgrsfqauv-bright-okhumales-projects.vercel.app"
+      const resetLink = `${domain}/reset/${resetToken}`
 
+      await sendResetEmail(email, resetLink);
 
-    // send reset token to user's email address
-    const domain = "www.brait.com";
-    const resetLink = `${domain}/reset/${resetToken}`
-    
-
-    // send response including the resetToken
-    return res.json({ message: "Password reset token generated successfully", resetToken });
-
-  } catch (err){
-    console.log(err);
-    return res.status(500).json({ success: false,  message: "Failed to create reset token" });
+      // send response including the reset token
+      return res.json({message: "Password reset token generated successfully", resetToken})
+  } catch (err) {
+      console.log(err);
+      return res.status(500).json({message: "Password reset token failed"});
   }
-    
-  }
+};
 
   // resetPassword function
+// resetPassword function
 export const resetPassword = async(req, res) => {
   try {
     const { newPassword } = req.body;
@@ -156,7 +160,7 @@ export const resetPassword = async(req, res) => {
       return res.status(400).json({success: false, message: 'Enter new password'})
     }
     if(!resetToken || !resetToken.startsWith("Bearer")){
-      return res.status(401).json({success: false, message: 'Invalid token or no reset token provided'}) 
+      return res.status(401).json({success: false, message: 'invalid token or no reset token provided'}) 
     }
 
     //get token without the "Bearer"
@@ -166,7 +170,6 @@ export const resetPassword = async(req, res) => {
     // verify the token
     const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
 
-    // console.log(decodedToken);
 
     if(!decodedToken){
       return res.status(403).json({success: false, message: "Invalid/expired token provided"})
